@@ -1163,20 +1163,22 @@ class MaskEditorDialog extends ComfyDialog {
       throw new Error('Max retries reached')
       return
     }
-    await api
-      .fetchApi('/upload/mask', {
-        method: 'POST',
-        body: formData
-      })
-      .then((response) => {
-        if (!response.ok) {
-          console.log('Failed to upload mask:', response)
-          this.uploadMask(filepath, formData, retries - 1)
-        }
-      })
-      .catch((error) => {
-        console.error('Error:', error)
-      })
+
+    const response = await api.fetchApi('/upload/mask', {
+      method: 'POST',
+      body: formData
+    })
+
+    if (!response.ok) {
+      console.log('Failed to upload mask:', response)
+      this.uploadMask(filepath, formData, retries - 1)
+      return
+    }
+
+    const data = await response.json()
+    filepath.filename = data.name
+    filepath.subfolder = data.subfolder
+    filepath.type = data.type
 
     try {
       const selectedIndex = ComfyApp.clipspace?.selectedIndex
