@@ -1185,11 +1185,19 @@ class MaskEditorDialog extends ComfyDialog {
     formData: FormData,
     clipspaceLocation: 'selectedIndex' | 'combinedIndex'
   ) {
-    const success = await requestWithRetries(() =>
-      api.fetchApi('/upload/mask', {
-        method: 'POST',
-        body: formData
-      })
+    const success = await requestWithRetries(
+      () =>
+        api.fetchApi('/upload/mask', {
+          method: 'POST',
+          body: formData
+        }),
+      3,
+      async (response) => {
+        const { subfolder, filename, type } = await response.json()
+        filepath.subfolder = subfolder
+        filepath.filename = filename
+        filepath.type = type
+      }
     )
     if (!success) {
       throw new Error('Upload failed.')
@@ -5387,7 +5395,8 @@ const changeBrushSize = async (sizeChanger: (oldSize: number) => number) => {
 
 const requestWithRetries = async (
   mkRequest: () => Promise<Response>,
-  maxRetries: number = 3
+  maxRetries: number = 3,
+  callback?: (response: Response) => void
 ): Promise<{ success: boolean }> => {
   let attempt = 0
   let success = false
@@ -5396,6 +5405,9 @@ const requestWithRetries = async (
       const response = await mkRequest()
       if (response.ok) {
         success = true
+        if (callback) {
+          callback(response)
+        }
       } else {
         console.log('Failed to upload mask:', response)
       }
