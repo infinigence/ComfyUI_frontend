@@ -1109,6 +1109,12 @@ class MaskEditorDialog extends ComfyDialog {
       // See: <https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/putImageData#data_loss_due_to_browser_optimization>
       // It is possible that WebGL contexts can achieve this, but WebGL is extremely complex, and the backend functionality is here for this purpose!
       // Refer to the backend repo's `server.py`, search for `@routes.post("/upload/mask")`
+
+      formDatas.paintedMaskedImage = canvasToFormData(
+        refinedMaskCanvas,
+        refs.paintedImage.filename,
+        refs.paintedImage
+      )
       await this.uploadMask(
         refs.paintedMaskedImage,
         formDatas.paintedMaskedImage,
@@ -1147,7 +1153,7 @@ class MaskEditorDialog extends ComfyDialog {
     formData: FormData,
     isPaintLayer = true
   ) {
-    const success = await requestWithRetries(() =>
+    const { success, response } = await requestWithRetries(() =>
       api.fetchApi('/upload/image', {
         method: 'POST',
         body: formData
@@ -1155,6 +1161,13 @@ class MaskEditorDialog extends ComfyDialog {
     )
     if (!success) {
       throw new Error('Upload failed.')
+    }
+
+    if (response) {
+      const { subfolder, name, type } = await response.json()
+      filepath.subfolder = subfolder
+      filepath.filename = name
+      filepath.type = type
     }
 
     if (!isPaintLayer) {
@@ -1185,14 +1198,23 @@ class MaskEditorDialog extends ComfyDialog {
     formData: FormData,
     clipspaceLocation: 'selectedIndex' | 'combinedIndex'
   ) {
-    const success = await requestWithRetries(() =>
-      api.fetchApi('/upload/mask', {
-        method: 'POST',
-        body: formData
-      })
+    const { success, response } = await requestWithRetries(
+      () =>
+        api.fetchApi('/upload/mask', {
+          method: 'POST',
+          body: formData
+        }),
+      3
     )
     if (!success) {
       throw new Error('Upload failed.')
+    }
+
+    if (response) {
+      const { subfolder, name, type } = await response.json()
+      filepath.subfolder = subfolder
+      filepath.filename = name
+      filepath.type = type
     }
 
     try {
@@ -5388,15 +5410,17 @@ const changeBrushSize = async (sizeChanger: (oldSize: number) => number) => {
 const requestWithRetries = async (
   mkRequest: () => Promise<Response>,
   maxRetries: number = 3
-): Promise<{ success: boolean }> => {
+): Promise<{ success: boolean; response: Response | null }> => {
   let attempt = 0
   let success = false
+  let response: Response | null = null
   while (attempt < maxRetries && !success) {
     try {
-      const response = await mkRequest()
+      response = await mkRequest()
       if (response.ok) {
         success = true
       } else {
+        attempt++
         console.log('Failed to upload mask:', response)
       }
     } catch (error) {
@@ -5409,7 +5433,7 @@ const requestWithRetries = async (
       }
     }
   }
-  return { success }
+  return { success, response }
 }
 
 const isAlphaValue = (index: number) => index % 4 === 3
